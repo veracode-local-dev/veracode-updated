@@ -12,7 +12,29 @@ on:
       modules_to_scan:
         required: true
         type: string
-  
+      owner:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+      token:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      create_code_scanning_alert:
+        required: true
+        type: boolean
+      create_issue:
+        required: true
+        type: boolean
+
+
 jobs:
   policy_scan:
     runs-on: ubuntu-latest
@@ -20,11 +42,11 @@ jobs:
 
     steps:
       - name: checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       # get the compiled binary from a previous job
       - name: get archive
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: veracode-artifact
           path: ./veracode_artifact_directory
@@ -35,7 +57,7 @@ jobs:
           echo "veracode_artifact=$artifact_file" >> $GITHUB_ENV
       # run the policy scan action
       - name: Veracode Upload and Scan Action Step
-        uses: veracode/uploadandscan-action@main
+        uses: veracode/uploadandscan-action@v0.1.2
         id: upload_and_scan
         with:
           appname: ${{ inputs.profile_name }}
@@ -49,4 +71,47 @@ jobs:
           scantimeout: 15
           include: ${{ inputs.modules_to_scan }}
           failbuild: true
-        
+
+# This step will import the flaws from the step above
+  create-issues:
+    needs: policy_scan
+
+    if: ${{ inputs.create_issue && failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get flaw file
+        uses: actions/download-artifact@v4
+        with:
+          name: 'policy-flaws'
+          path: /tmp
+      - name: Create flaws as issues
+        uses: veracode/veracode-flaws-to-issues@v2.2.22
+        with:
+          scan-results-json: '/tmp/policy_flaws.json'
+          repo_owner: ${{ inputs.owner }}
+          repo_name: ${{ inputs.repo }}
+          github-token: ${{ inputs.token }}
+  
+  results_to_security_tab:
+    needs: policy_scan
+    runs-on: ubuntu-latest
+    if: ${{ failure() && inputs.create_code_scanning_alert }}
+    name: Send policy scan report to Security tab
+    steps:
+      - name: Get scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: policy-flaws
+          path: /tmp
+      - name: Convert policy scan output to SARIF format
+        id: convert
+        uses: Veracode/veracode-pipeline-scan-results-to-sarif@v2.0.0
+        with:
+          scan-type: policy
+          results-json: '/tmp/policy_flaws.json'
+          output-results-sarif: veracode-results.sarif
+          repo_owner: ${{ inputs.owner }}
+          repo_name: ${{ inputs.repo }}
+          commitSHA: ${{ inputs.sha }}
+          ref: ${{ inputs.ref }}
+          githubToken: ${{ inputs.token }}
