@@ -72,7 +72,7 @@ jobs:
           name: "Veracode Pipeline-Scan Results"
       - name: Convert pipeline scan output to SARIF format
         id: convert
-        uses: Veracode/veracode-pipeline-scan-results-to-sarif@v2.0.0
+        uses: Veracode/veracode-pipeline-scan-results-to-sarif@granular_severities
         with:
           pipeline-results-json: filtered_results.json
           output-results-sarif: veracode-results.sarif
@@ -81,6 +81,8 @@ jobs:
           commitSHA: ${{ inputs.sha }}
           ref: ${{ inputs.ref }}
           githubToken: ${{ inputs.token }}
+          source-base-path-1: "com/:src/main/java/com/"
+          source-base-path-2: "WEB-INF:src/main/webapp/WEB-INF"
 
 # This step will import the flaws from the step above
   create-issues:
